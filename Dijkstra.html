@@ -1,0 +1,470 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>A* - Search Algorithm Visualizer</title>
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    <link rel="stylesheet" href="css/site.css" />
+
+    <!--<script src="https://kit.fontawesome.com/333e6c57f2.js" crossorigin="anonymous"></script>-->
+
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js" crossorigin="anonymous"></script>
+
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+
+    <script src="js/leader-line.min.js"></script>
+
+    <script src="https://kit.fontawesome.com/333e6c57f2.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <nav class="navbar navbar-inverse navbar-fixed-top">
+        <div class="container">
+            <div class="navbar-header">
+                <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+                    <span class="sr-only">Toggle navigation</span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                </button>
+                <a class="navbar-brand" href="/">Search Algorithm Visualizer</a>
+            </div>
+            <div class="navbar-collapse collapse">
+                <ul class="nav navbar-nav">
+                    <li><a href="/AStar.html">A*</a></li>
+                    <li><a href="/Dijkstra.html">Dijkstra</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container body-content">
+
+        <script src="/js/leader-line.min.js"></script>
+
+        <div class="row" style="padding: 30px">
+            <div class="col-lg-3">
+                <div class="form-group row">
+                    <label for="delay">Delay</label>
+                    <div id="delay">
+                        <button id="delay250" class="btn btn-primary">250</button>
+                        <button id="delay500" class="btn btn-primary">500</button>
+                        <button id="delay1000" class="btn btn-primary">1000</button>
+                        <button id="delay2000" class="btn btn-primary">2000</button>
+                    </div>
+                    <small id="delayHelp" class="text-muted">The time between each move in milliseconds.</small>
+                </div>
+                <hr class="row" />
+                <div class="form-group row">
+                    <button id="run" class="btn btn-success"><i class="fas fa-play"></i> Run</button>
+                </div>
+                <hr class="row" />
+                <div class="row">
+                    <label>Guidance</label>
+                    <div><i class="far fa-lightbulb"></i> The <span class="text-success"><b>green cell</b></span> is the start point.</div>
+                    <div><i class="far fa-lightbulb"></i> <span class="text-danger"><b>Red cells</b></span> are not reachable from the start point.</div>
+                    <div><i class="far fa-lightbulb"></i> <span class="text-warning"><b>Double-click</b></span> a cell to set as the start point.</div>
+                    <div><i class="far fa-lightbulb"></i> Traveling between cities is <span class="text-info"><b>one-way only</b></span>.</div>
+                    <div><i class="far fa-lightbulb"></i> The number under a city name indicates the <span class="text-muted"><b>shortest distance</b></span> from the start point to that city.</div>
+                </div>
+            </div>
+            <div class="col-lg-9">
+                <div id="maze-holder"></div>
+            </div>
+        </div>
+
+        <script>
+            class City {
+                constructor(name, cell) {
+                    this.name = name;
+                    this.neighborhoods = [];
+                    this.cell = cell;
+                    this.shortestDist = null;
+                    this.prev = null;
+                }
+            }
+
+            class Neighborhood {
+                constructor(dest, dist) {
+                    this.dest = dest; // destination
+                    this.dist = dist; // distance
+                }
+            }
+
+            class Cell {
+                constructor(row, col) {
+                    this.row = row;
+                    this.col = col;
+                }
+            }
+
+            // TODO: make modifiable
+            var c1 = new Cell(1, 0);
+            var c2 = new Cell(2, 4);
+            var c3 = new Cell(4, 2);
+            var c4 = new Cell(0, 9);
+            var c5 = new Cell(0, 5);
+            var c6 = new Cell(1, 7);
+            var c7 = new Cell(3, 9);
+
+            var cells = [c1, c2, c3, c4, c5, c6, c7];
+
+            // TODO: make modifiable
+            const amsterdam = new City("Amsterdam", cells[0]);
+            const hamburg = new City("Hamburg", cells[1]);
+            const berlin = new City("Berlin", cells[2]);
+            const helsinki = new City("Helsinki", cells[3]);
+            const stockholm = new City("Stockholm", cells[4]);
+            const copenhagen = new City("Copenhagen", cells[5]);
+            const istanbul = new City("Istanbul", cells[6]);
+
+            class Maze {
+                constructor(cols, rows) {
+                    this.nCols = cols;
+                    this.nRows = rows;
+                    this.cols = [];
+                    this.rows = [];
+                    this.cities = [];
+                    this.visitedList = []; // City[]
+                    this.unvisitedList = []; // City[]
+
+                    this.departure = undefined;
+
+                    this.fontSize = undefined;
+                }
+            }
+
+            this.maze = new Maze();
+            this.maze.delay = 1000;
+            activateDelay(this.maze.delay);
+
+            setNeighborhoods();
+
+            const defRows = 5; // TODO: make modifiable
+            setDims(defRows);
+
+            initMaze();
+
+            drawMaze();
+
+            drawLines();
+
+            function setNeighborhoods() {
+                amsterdam.neighborhoods.push(new Neighborhood(berlin, 656));
+                amsterdam.neighborhoods.push(new Neighborhood(stockholm, 464));
+
+                berlin.neighborhoods.push(new Neighborhood(hamburg, 288));
+                berlin.neighborhoods.push(new Neighborhood(istanbul, 1736));
+
+                hamburg.neighborhoods.push(new Neighborhood(stockholm, 978));
+                hamburg.neighborhoods.push(new Neighborhood(copenhagen, 334));
+                hamburg.neighborhoods.push(new Neighborhood(amsterdam, 368));
+
+                copenhagen.neighborhoods.push(new Neighborhood(helsinki, 1132));
+                copenhagen.neighborhoods.push(new Neighborhood(istanbul, 2020));
+
+                stockholm.neighborhoods.push(new Neighborhood(copenhagen, 657));
+
+                this.maze.cities = [amsterdam, hamburg, berlin, helsinki, stockholm, copenhagen, istanbul];
+
+                this.maze.departure = amsterdam; // TODO: must be selectable
+            }
+
+            function setDims(rows) {
+                const cols = rows * 2;
+                this.maze.nRows = rows;
+                this.maze.nCols = cols;
+
+                const w = 500 / rows;
+                this.maze.cellWidth = w + "px"; // for dimension 10, it is 100. for dimension 5, it is 200
+                this.maze.cellHeight = this.maze.cellWidth;
+                this.maze.tableWidth = cols * w + "px";
+
+                const fs = rows / 5;
+                this.maze.fontSize = fs + "em"; // for dimension 10, it is 4em. for dimension 5, it is 2em
+            }
+
+            function initMaze() {
+                for (let i = 0; i < this.maze.nRows; i++) {
+                    const row = [];
+                    for (let j = 0; j < this.maze.nCols; j++) {
+                        const cell = new Cell(i, j);
+                        row.push(cell);
+                    }
+                    this.maze.rows.push(row);
+                }
+
+                debugger;
+                this.maze.delay = getDelay();
+                activateDelay(this.maze.delay);
+            }
+
+            function drawMaze() {
+                let html = "<table id='maze'>";
+                for (let i = 0; i < this.maze.nRows; i++) {
+                    html += "<tr>";
+                    for (let j = 0; j < this.maze.nCols; j++) {
+                        let city = null;
+                        for (let k = 0; k < this.maze.cities.length; k++) {
+                            if (this.maze.cities[k].cell.col === j && this.maze.cities[k].cell.row === i) {
+                                city = this.maze.cities[k];
+                            }
+                        }
+
+                        let cellType = "";
+                        if (city != null && city.name !== "") {
+                            if (city === this.maze.departure) {
+                                cellType = "start";
+                            } else {
+                                cellType = "city";
+                            }
+                        }
+
+                        let td = "<td id='" + getTdId(new Cell(i, j)) + "' row='" + i + "' col='" + j + "' cellType='" + cellType + "'>";
+
+                        if (city != null && city.name !== "") {
+                            td += "<i class='fas fa-map-marker-alt'></i> <span class='city-name'><b>" + city.name + "</b></span>";
+                        }
+
+                        td += "<div class='dist col-lg-12'></div>";
+
+                        //if (city != null && city.name !== "") {
+                        //    let optionsDiv = "";
+                        //    if (city === this.maze.departure) {
+                        //        optionsDiv = "<div>" +
+                        //            //"<span>start</span>" +
+                        //            "</div>";
+                        //    } else {
+                        //        optionsDiv = "<div>" +
+                        //            //"<button class='btn-set-start btn btn-light btn-sm' row='" + i + "' col='" + j + "'>make start</button>" +
+                        //            "</div>";
+                        //    }
+                        //    td += optionsDiv;
+                        //}
+                        td += "</td>";
+                        html += td;
+                    }
+                    html += "</tr>";
+                }
+                html += "</table>";
+
+                $("#maze-holder").append(html);
+
+                $("#maze").css("width", this.maze.tableWidth);
+                $("#maze").css("table-layout", "fixed");
+                $("#maze tr td").css("width", this.maze.cellWidth);
+                $("#maze tr td").css("height", this.maze.cellHeight);
+                $("#maze tr td").css("font-size", this.maze.fontSize);
+                $("#maze tr td").css("text-align", "center");
+                $("#maze tr td").css("background-color", "lightgray");
+                $("#maze tr td[cellType='start']").css("background-color", "green");
+                $("#maze tr td[cellType='city']").css("background-color", "orange");
+                $("#maze tr td").css("border", "1px solid orange");
+            }
+
+            function getTd(cell) {
+                return $(`#maze td[row='${cell.row}'][col='${cell.col}']`);
+            }
+
+            function getTdId(cell) {
+                return `td-${cell.row}-${cell.col}`;
+            }
+
+            function getCell(td) {
+                const row = $(td).attr("row");
+                const col = $(td).attr("col");
+
+                const cell = findCell(row, col);
+                return cell;
+            }
+
+            function findCell(row, col) {
+                return this.maze.rows[row][col];
+            }
+
+            function getCity(cell) {
+                var returnVal = null;
+
+                for (let i = 0; i < this.maze.cities.length; i++) {
+                    const city = this.maze.cities[i];
+                    if (city.cell.row === cell.row && city.cell.col === cell.col) {
+                        returnVal = city;
+                    }
+                }
+
+                return returnVal;
+            }
+
+            function activateDelay(delay) {
+                $("#delay button").each(function () {
+                    const btn = $(this)[0];
+                    if (btn.innerText === delay) {
+                        $(btn).addClass("active");
+                    } else {
+                        $(btn).removeClass("active");
+                    }
+                });
+
+                $("#delay button").removeClass("active");
+                $("#delay" + delay).addClass("active");
+            };
+
+            function getDelay() {
+                return $("#delay button.active")[0].innerText;
+            };
+
+            $("#run").on("click", function () {
+                run();
+            });
+
+            $("#delay button").on("click", function () {
+                const btn = $(this)[0];
+                const delay = btn.innerText;
+                maze.delay = delay;
+
+                $(btn).addClass("active");
+
+                activateDelay(delay);
+            });
+
+            $(document).on("dblclick", "td[cellType='city']", function () {
+                const cell = getCell($(this));
+
+                clearMaze();
+                initMaze();
+
+                maze.departure = getCity(cell);
+
+                drawMaze();
+                drawLines();
+            });
+
+            function run() {
+                // TODO: necessary?
+                this.maze.visitedList = [];
+                this.maze.unvisitedList = [];
+
+                for (let i = 0; i < this.maze.cities.length; i++) {
+                    const city = this.maze.cities[i];
+                    if (city === this.maze.departure) {
+                        this.maze.cities[i].shortestDist = 0;
+                    }
+                    else {
+                        this.maze.cities[i].shortestDist = Infinity;
+                    }
+                }
+
+                for (let i = 0; i < this.maze.cities.length; i++) {
+                    const city = this.maze.cities[i];
+                    this.maze.unvisitedList.push(city);
+                }
+
+                function traverseNeighborLoop() {
+
+                    traverseNeighbor();
+
+                    setTimeout(function () {
+                        if (this.maze.unvisitedList.length > 0) {
+                            traverseNeighborLoop();
+                        }
+                    }, this.maze.delay);
+                }
+
+                traverseNeighborLoop();
+            }
+
+            function clearMaze() {
+                $("#maze-holder").empty();
+                this.maze.cols = [];
+                this.maze.rows = [];
+                this.maze.departure = undefined;
+                this.maze.fontSize = undefined;
+            }
+
+            function getSmallestUnvisited() {
+                let min = 0;
+                for (let i = 0; i < this.maze.unvisitedList.length; i++) {
+                    if (this.maze.unvisitedList[i].shortestDist < this.maze.unvisitedList[min].shortestDist) {
+                        min = i;
+                    }
+                }
+                return this.maze.unvisitedList[min];
+            }
+
+            function traverseNeighbor() {
+                const city = getSmallestUnvisited();
+
+                for (let j = 0; j < city.neighborhoods.length; j++) {
+                    const neighborHood = city.neighborhoods[j];
+
+                    const dist = city.shortestDist + neighborHood.dist;
+
+                    debugger;
+
+                    if (dist < neighborHood.dest.shortestDist) {
+                        neighborHood.dest.shortestDist = city.shortestDist + neighborHood.dist;
+                        neighborHood.dest.prev = city;
+                    }
+
+                    // Display ShortestDist
+                    const td = getTd(neighborHood.dest.cell);
+
+                    if (neighborHood.dest === this.maze.departure) { // TODO: unnecessary?
+                        //$(td)[0].childNodes[1].innerText = "Start";
+                    } else {
+                        if (neighborHood.dest.shortestDist === Infinity) {
+                            $(td)[0].childNodes[3].innerText = "No way";
+                            $(td).css("background-color", "orangered");
+                        } else if ($(td)[0].childNodes[3].innerText === "") { // TODO: make it more simple/robust
+                            $(td)[0].childNodes[3].innerText = `${neighborHood.dest.shortestDist} km`;
+                        }
+                    }
+                }
+
+                this.maze.visitedList.push(city);
+                removeFromArray(this.maze.unvisitedList, city);
+            }
+
+            function removeFromArray(arr, elm) {
+                for (let i = 0; i < arr.length; i++) {
+                    if (arr[i] === elm) {
+                        arr.splice(i, 1);
+                    }
+                }
+            }
+
+            function drawLines() {
+                // Lines between cities
+                for (let i = 0; i < this.maze.cities.length; i++) {
+                    const city = this.maze.cities[i];
+                    const start = getTdId(city.cell);
+
+                    for (let j = 0; j < city.neighborhoods.length; j++) {
+                        const neighbor = city.neighborhoods[j];
+                        const dest = getTdId(neighbor.dest.cell);
+
+                        const line = new LeaderLine(
+                            document.getElementById(start),
+                            LeaderLine.areaAnchor(document.getElementById(dest), {
+                                x: 0,
+                                y: 50,
+                                width: 0,
+                                height: 0
+                            }),
+                            { middleLabel: neighbor.dist + ' km' }
+                        );
+                    }
+                }
+            }
+        </script>
+
+        <hr />
+        <footer>
+            <p>&copy; 2020 - Search Algorithm Visualizer</p>
+        </footer>
+    </div>
+</body>
+</html>

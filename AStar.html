@@ -1,0 +1,649 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>A* - Search Algorithm Visualizer</title>
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    <link rel="stylesheet" href="css/site.css" />
+
+    <!--<script src="https://kit.fontawesome.com/333e6c57f2.js" crossorigin="anonymous"></script>-->
+
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js" crossorigin="anonymous"></script>
+
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+</head>
+<body>
+    <nav class="navbar navbar-inverse navbar-fixed-top">
+        <div class="container">
+            <div class="navbar-header">
+                <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+                    <span class="sr-only">Toggle navigation</span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                </button>
+                <a class="navbar-brand" href="/">Search Algorithm Visualizer</a>
+            </div>
+            <div class="navbar-collapse collapse">
+                <ul class="nav navbar-nav">
+                    <li><a href="/AStar">A*</a></li>
+                    <li><a href="/Dijkstra">Dijkstra</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container body-content">
+
+        <div class="row" style="padding: 30px">
+            <div class="col-lg-4">
+                <div class="form-group row">
+                    <label for="dim">Dimension</label>
+                    <input id="dim" class="form-control" type="number" min="5" max="100" list="defDims">
+                    <small id="dimHelp" class="text-muted">The number of cells in each row and column.</small>
+                    <datalist id="defDims">
+                        <option value="5"></option>
+                        <option value="10"></option>
+                        <option value="15"></option>
+                        <option value="20"></option>
+                        <option value="25"></option>
+                        <option value="50"></option>
+                        <option value="100"></option>
+                    </datalist>
+                </div>
+                <div class="form-group row">
+                    <button id="save" class="btn btn-primary"><i class="fas fa-check"></i> Apply</button>
+                </div>
+                <hr class="row" />
+                <div class="form-group row">
+                    <label for="delay">Delay</label>
+                    <div id="delay">
+                        <button id="delay250" class="btn btn-primary">250</button>
+                        <button id="delay500" class="btn btn-primary">500</button>
+                        <button id="delay1000" class="btn btn-primary">1000</button>
+                        <button id="delay2000" class="btn btn-primary">2000</button>
+                    </div>
+                    <small id="delayHelp" class="text-muted">The time between each move in milliseconds.</small>
+                </div>
+                <hr class="row" />
+                <div class="form-group row">
+                    <button id="run" class="btn btn-success"><i class="fas fa-play"></i> Run</button>
+                    <button id="clear" class="btn btn-danger"><i class="fas fa-sync"></i> Clear</button>
+                    <!--<button id="neighbors" class="btn btn-warning">Neighbors</button>-->
+                </div>
+            </div>
+            <div class="col-lg-8">
+                <div id="maze-holder"></div>
+            </div>
+        </div>
+
+        <script>
+            $("#dim").keydown(function () {
+                return event.keyCode === 8 || event.keyCode === 46 ? true : !isNaN(Number(event.key));
+            });
+
+            $("#save").on("click", function () {
+                $("#maze-holder").empty();
+                const dim = $("#dim")[0].value;
+                const delay = $("#delay")[0].value;
+
+                createMaze(dim, delay);
+            });
+
+            function activateDelay(delay) {
+                $("#delay button").each(function () {
+                    const btn = $(this)[0];
+                    if (btn.innerText == delay) {
+                        $(btn).addClass("active");
+                    } else {
+                        $(btn).removeClass("active");
+                    }
+                });
+            };
+
+            $("#delay button").on("click",
+                function () {
+                    const btn = $(this)[0];
+                    const delay = btn.innerText;
+                    maze.delay = delay;
+
+                    $(btn).addClass("active");
+
+                    activateDelay(delay);
+                });
+
+            class Maze {
+                constructor(dim) {
+                    this.rows = [];
+                    this.dim = dim;
+                    this.openSet = [];
+                    this.closedSet = [];
+
+                    this.startCell = undefined;
+                    this.targetCell = undefined;
+                    this.activeCell = undefined;
+
+                    this.path = [];
+                    this.reached = false;
+
+                    this.startSet = false;
+                    this.targetSet = false;
+
+                    this.delay = undefined;
+                    this.fontSize = undefined;
+                }
+            }
+
+            class Cell {
+                constructor(col, row) {
+                    this.col = col;
+                    this.row = row;
+                    this.g = 0;
+                    this.h = 0;
+                    this.f = this.g + this.h;
+
+                    this.neighbors = [];
+                    this.start = false;
+                    this.target = false;
+                    this.wall = false;
+                }
+            }
+
+            const rgbEmpty = "rgb(211, 211, 211)"; // LightGray
+            const rgbStart = "rgb(60, 179, 113)"; // MediumSeaGreen
+            const rgbTarget = "rgb(255, 99, 71)"; // Tomato
+            const rgbReached = "rgb(30, 144, 255)"; // DodgerBlue
+            const rgbPath = "rgb(60, 179, 113)"; // MediumSeaGreen
+            const rgbWall = "rgb(0, 0, 0)"; // Black
+            const rgbCurrent = "rgb(255, 165, 0)"; // Orange
+            const rgbFadedCurrent = "rgb(247, 211, 104)"; //
+            const rgbNeighbor = "rgb(102, 102, 102)"; // Gray
+            const borderNeighbor = "2px dashed " + rgbNeighbor;
+
+            const defDim = 10;
+            const defDelay = 1000;
+
+            createMaze(defDim, defDelay);
+
+            function createMaze(dim, delay) {
+                const w = 500 / dim;
+                const cellWidth = w + "px"; // for dimension 10, it is 100. for dimension 5, it is 200
+                const cellHeight = cellWidth;
+                const tableWidth = dim * w + "px";
+
+                const fs = 20 / dim;
+                const fontSize = fs + "em"; // for dimension 10, it is 4em. for dimension 5, it is 2em
+
+                let html = "<table id='maze'>";
+                for (let i = 0; i < dim; i++) {
+                    html += "<tr>";
+                    for (let j = 0; j < dim; j++) {
+                        let td = "<td id='" + getTdId(new Cell(i, j)) + "' row='" + i + "' col='" + j + "'>";
+                        td += "</td>";
+                        html += td;
+                    }
+                    html += "</tr>";
+                }
+                html += "</table>";
+
+                $("#maze-holder").append(html);
+
+                $("#maze").css("width", tableWidth);
+                $("#maze").css("table-layout", "fixed");
+                $("#maze tr td").css("width", cellWidth);
+                $("#maze tr td").css("height", cellHeight);
+                $("#maze tr td").css("font-size", fontSize);
+                $("#maze tr td").css("text-align", "center");
+                $("#maze tr td").css("background-color", "lightgray");
+                $("#maze tr td").css("border", "1px solid orange");
+
+                $("#dim").val(dim);
+
+                initMaze(dim, delay, fontSize);
+
+                $("#delay").val(delay);
+
+                activateDelay(delay);
+            }
+
+            function initMaze(dim, delay, fontSize) {
+                this.maze = new Maze(dim);
+                for (let i = 0; i < this.maze.dim; i++) {
+                    const row = [];
+                    for (let j = 0; j < this.maze.dim; j++) {
+                        const cell = new Cell(i, j);
+                        row.push(cell);
+                    }
+                    this.maze.rows.push(row);
+                }
+
+                this.maze.delay = delay;
+                this.maze.fontSize = fontSize;
+            }
+
+            function printMaze() {
+                console.log("Printing maze...");
+                for (let i = 0; i < this.maze.dim; i++) {
+                    for (let j = 0; j < this.maze.dim; j++) {
+                        const cell = this.maze.rows[i][j];
+                        const state = cell.start ? "start" : (cell.target ? "target" : (cell.wall ? "wall" : "empty"));
+                        console.log(`col: ${cell.col} row: ${cell.row} state: ${state}`);
+                    }
+                }
+            }
+
+            $(document).on("click", "#maze td", function () {
+                const cell = getCell($(this));
+
+                clearFontSize();
+                setActive(cell);
+
+                const color = $(this).css("background-color");
+
+                if (color !== rgbStart && color !== rgbTarget) {
+                    if (isMapClear()) {
+                        setStart($(this), cell);
+                    } else if (isStartSetOnly()) {
+                        setTarget($(this), cell);
+                    } else {
+                        if (color === rgbEmpty) {
+                            setWall($(this));
+                        } else {
+                            setEmpty($(this));
+                        }
+                    }
+                }
+            });
+
+            $("#run").on("click", function () {
+                run();
+            });
+
+            $("#clear").on("click", function () {
+                clear();
+            });
+
+            //$("#neighbors").on("click", function () {
+            //    clearNeighbors();
+            //    showNeighbors(maze.activeCell);
+            //});
+
+            function run() {
+                if (!isStartEndTargetSet()) {
+                    alert("Start and target must be set to run!");
+                    return false;
+                }
+
+                this.maze.openSet.push(this.maze.startCell); // start point
+
+                function visitNeighbor() {
+                    var winner = 0;
+                    for (let i = 0; i < this.maze.openSet.length; i++) {
+                        if (this.maze.openSet[i].f < this.maze.openSet[winner].f) {
+                            winner = i;
+                        }
+                    }
+
+                    // winner: picked cell (the one with the least f value)
+                    const current = this.maze.openSet[winner];
+
+                    fadeCurrents();
+                    setCurrent(current);
+
+                    if (current === this.maze.targetCell) {
+
+                        this.maze.reached = true;
+
+                        clearFontSize();
+                        setActive(current);
+                        paintCell(current, rgbReached);
+
+                        let temp = current;
+                        this.maze.path.push(temp);
+                        while (temp.previous) {
+                            this.maze.path.push(temp.previous);
+                            temp = temp.previous;
+                        }
+
+                        paintPath();
+
+                        printCost(this.maze.targetCell);
+
+                        alert("REACHED!");
+
+                        return true;
+                    }
+
+                    removeFromArray(this.maze.openSet, current);
+                    this.maze.closedSet.push(current);
+
+                    const neighbors = getNeighbors(current);
+                    for (let j = 0; j < neighbors.length; j++) {
+                        const neighbor = neighbors[j];
+
+                        if (!this.maze.closedSet.includes(neighbor) && !neighbor.wall) {
+                            const tempG = current.g + 1;
+
+                            let newPath = false;
+                            if (this.maze.openSet.includes(neighbor)) {
+                                if (tempG < neighbor.g) {
+                                    neighbor.g = tempG;
+                                    newPath = true;
+                                }
+                            } else {
+                                neighbor.g = tempG;
+                                this.maze.openSet.push(neighbor);
+                                newPath = true;
+                            }
+
+                            if (newPath) {
+                                neighbor.h = heuristic(neighbor, this.maze.targetCell);
+                                neighbor.f = neighbor.g + neighbor.h;
+                                neighbor.previous = current;
+
+                                // Mark the path cell
+                                paintNeighbor(neighbor);
+                            }
+                        }
+                    }
+                }
+
+                function visitNeighborLoop() {
+                    visitNeighbor();
+
+                    setTimeout(function () {
+                        if (this.maze.openSet.length > 0 && !this.maze.reached) {
+                            visitNeighborLoop();
+                        } else if (!this.maze.reached) {
+                            alert("NO SOLUTION!");
+                        }
+                    }, this.maze.delay);
+                }
+
+                visitNeighborLoop();
+            }
+
+            function isMapClear() {
+                var clear = true;
+
+                $("#maze td").each(function () {
+                    if ($(this).css("background-color") !== rgbEmpty)
+                        clear = false;
+                });
+
+                return clear;
+            }
+
+            function isStartSetOnly() {
+                var startPlaced = false;
+                var othersPlaced = false;
+
+                for (let i = 0; i < this.maze.dim; i++) {
+                    for (let j = 0; j < this.maze.dim; j++) {
+                        const cell = this.maze.rows[i][j];
+
+                        if (cell.start) {
+                            startPlaced = true;
+                        } else if (cell.target) {
+                            othersPlaced = true;
+                        }
+                    }
+                }
+
+                return startPlaced && !othersPlaced;
+            }
+
+            function isStartEndTargetSet() {
+                return this.maze.startSet && this.maze.targetSet;
+            }
+
+            function setStart(td, cell) {
+                this.maze.startCell = findCell(cell.col, cell.row);
+                cell.start = true;
+
+                $(td).css("background-color", rgbStart);
+                $(td)[0].innerText = "S";
+
+                this.maze.startSet = true;
+            }
+
+            function setTarget(td, cell) {
+                this.maze.targetCell = findCell(cell.col, cell.row);
+                cell.target = true;
+
+                $(td).css("background-color", rgbTarget);
+
+                this.maze.targetSet = true;
+
+                $(td)[0].innerText = "T";
+            }
+
+            function setWall(td) {
+                const cell = getCell(td);
+                cell.wall = true;
+
+                paintWall(td);
+            }
+
+            function setEmpty(td) {
+                const cell = getCell(td);
+                cell.wall = false;
+
+                $(td).css("background-color", rgbEmpty);
+            }
+
+            function setCurrent(cell) {
+                if (!cell.start && !cell.target && !cell.wall) {
+                    paintCell(cell, rgbCurrent);
+
+                    clearFontSize();
+
+                    const td = getTd(cell);
+                    $(td).css("font-weight", "bold");
+                }
+            }
+
+            function setActive(cell) {
+                this.maze.activeCell = cell;
+                const td = getTd(cell);
+                $(td).css("font-weight", "bold");
+            }
+
+            function paintWall(td) {
+                $(td).css("background-color", rgbWall);
+            }
+
+            function paintNeighbor(cell) {
+                if (!cell.start && !cell.wall && !cell.target) {
+                    paintCell(cell, rgbNeighbor);
+                }
+            }
+
+            function paintPath() {
+                for (let i = 0; i < this.maze.path.length; i++) {
+                    const cell = findCell(this.maze.path[i].col, this.maze.path[i].row);
+                    if (!cell.target && !cell.start) {
+                        const td = getTd(cell);
+                        $(td).css("background-color", rgbPath);
+                    }
+                }
+            }
+
+            function printCost(cell) {
+                getTd(cell).innerText = cell.f;
+            }
+
+            function paintCell(cell, color) {
+                const td = getTd(cell);
+                $(td).css("background-color", color);
+            }
+
+            function fadeCurrents() {
+                for (let i = 0; i < this.maze.dim; i++) {
+                    for (let j = 0; j < this.maze.dim; j++) {
+                        const cell = this.maze.rows[i][j];
+
+                        const td = getTd(cell);
+                        if ($(td).css("background-color") === rgbCurrent) {
+                            $(td).css("background-color", rgbFadedCurrent);
+                        }
+                    }
+                }
+            }
+
+            function clear() {
+                $("#maze td").each(function () {
+                    $(this).css("background-color", rgbEmpty);
+                    $(this).css("border", "1px solid " + rgbCurrent);
+                    $(this)[0].innerText = "";
+
+                    clearFontSize();
+                });
+
+                clearMaze();
+                clearCells();
+            }
+
+            function clearMaze() {
+                this.maze.openSet = [];
+                this.maze.closedSet = [];
+
+                this.maze.startCell = undefined;
+                this.maze.targetCell = undefined;
+                this.maze.activeCell = undefined;
+
+                this.maze.path = [];
+                this.maze.reached = false;
+
+                this.maze.startSet = false;
+                this.maze.targetSet = false;
+            }
+
+            function clearCells() {
+                for (let i = 0; i < this.maze.dim; i++) {
+                    for (let j = 0; j < this.maze.dim; j++) {
+                        const cell = this.maze.rows[i][j];
+                        cell.g = 0;
+                        cell.h = 0;
+                        cell.f = 0;
+                        cell.neighbors = [];
+                        cell.start = false;
+                        cell.target = false;
+                        cell.wall = false;
+                    }
+                }
+            }
+
+            function clearNeighbors() {
+                $("#maze td").each(function () {
+                    if ($(this).css("border") === borderNeighbor) {
+                        $(this).css("border", "1px solid orange");
+                    }
+                });
+            }
+
+            function clearFontSize() {
+                $("#maze td").each(function () {
+                    $(this).css("font-size", maze.fontSize);
+                });
+            }
+
+            function getTd(cell) {
+                debugger;
+                return $(`#maze td[row='${cell.row}'][col='${cell.col}']`);
+            }
+
+            function getTdId(cell) {
+                return `td-${cell.row}-${cell.col}`;
+            }
+
+            function getCell(td) {
+                const row = $(td).attr("row");
+                const col = $(td).attr("col");
+
+                const cell = findCell(row, col);
+                return cell;
+            }
+
+            function findCell(col, row) {
+                return this.maze.rows[col][row];
+            }
+
+            function getNeighbors(cell) {
+
+                const neighbors = []; // Cell array
+
+                if (cell.col < this.maze.dim - 1) {
+                    const c = findCell(cell.col + 1, cell.row);
+                    if (!c.wall) {
+                        addNeighbor(neighbors, c.col, c.row);
+                    }
+                }
+
+                if (cell.row < this.maze.dim - 1) {
+                    const c = findCell(cell.col, cell.row + 1);
+                    if (!c.wall) {
+                        addNeighbor(neighbors, c.col, c.row);
+                    }
+                }
+
+                if (cell.col > 0) {
+                    const c = findCell(cell.col - 1, cell.row);
+                    if (!c.wall) {
+                        addNeighbor(neighbors, c.col, c.row);
+                    }
+                }
+
+                if (cell.row > 0) {
+                    const c = findCell(cell.col, cell.row - 1);
+                    if (!c.wall) {
+                        addNeighbor(neighbors, c.col, c.row);
+                    }
+                }
+
+                return neighbors;
+            }
+
+            function addNeighbor(arr, col, row) {
+                const neighbor = findCell(col, row);
+                arr.push(neighbor);
+            }
+
+            function showNeighbors(cell) {
+                this.neighbors = [];
+
+                this.neighbors = getNeighbors(cell);
+
+                var i;
+                for (i = 0; i < neighbors.length; i++) {
+                    const td = getTd(neighbors[i]);
+                    $(td).css("border", borderNeighbor);
+                };
+            }
+
+            function removeFromArray(arr, elm) {
+                for (let i = 0; i < arr.length; i++) {
+                    if (arr[i] === elm) {
+                        arr.splice(i, 1);
+                    }
+                }
+            }
+
+            function heuristic(cell, target) {
+                // var d = dist(a.i, a.j, b.i, b.j);
+                const d = Math.sqrt(Math.pow(Math.abs(cell.col - target.col), 2) + Math.pow(Math.abs(cell.row - target.row), 2));
+                return d;
+            }
+        </script>
+
+        <hr />
+        <footer>
+            <p>&copy; 2020 - Search Algorithm Visualizer</p>
+        </footer>
+    </div>
+</body>
+</html>
